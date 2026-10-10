@@ -2,63 +2,47 @@
 
 ## 工作方式
 
-面板服务器运行 `probe.py`，提供网页并监控本机；其他服务器以子服务器模式运行同一个文件，主动把数据上报给面板，不需要开放端口。只有面板需要对外提供一个端口（默认 `8899`）。
+面板服务器提供网页并监控本机；其他服务器以子服务器模式运行同一套程序，主动把数据上报给面板，不需要开放端口。代码安装在 `/opt/vps-probe`（子服务器为 `/opt/vps-probe-agent`），配置在 `/etc/vps-probe.env`，数据在 `/var/lib/vps-probe`。
 
-## 安装与升级
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/zhushili/vps-probe/main/install.sh | bash
-```
-
-- 安装文件从本仓库通过 HTTPS 下载；设置 `PROBE_REF=<提交>` 可以固定安装某个版本
-- 重复执行即升级，没指定的参数沿用原配置，手动添加的 `PROBE_*` 配置也会保留
-- 升级时先检查参数和端口，再备份旧的代码、配置和服务文件；新版本启动失败（面板 `/healthz` 不通或进程退出）会自动恢复旧版本，首次安装失败会清理干净
-- 无法访问 GitHub 时，把 `probe.py` 复制到服务器上，执行 `sudo python3 probe.py install`
-
-## HTTPS（公网使用必须配置）
-
-面板使用 HTTP Basic 认证，子服务器使用 token；在 HTTP 下它们都是明文传输。公网使用时请让面板只监听本机，由反向代理提供 HTTPS：
+## 管理菜单
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/zhushili/vps-probe/main/install.sh | bash -s -- --host 127.0.0.1
-echo 'PROBE_TRUST_PROXY="1"' >> /etc/vps-probe.env && systemctl restart vps-probe   # 用代理传来的真实 IP 做限流
+curl -fsSL https://raw.githubusercontent.com/zhushili/vps-probe/main/install.sh | bash   # 首次安装
+vps-probe                                                                                 # 安装后
 ```
 
-**Caddy**（自动申请证书）：
+菜单顶部显示面板和子服务器的运行状态，提供：安装面板 / 修改面板配置、安装子服务器、配置域名和 HTTPS、查看状态和登录信息、查看日志、重启服务、升级、卸载。
 
-```
-probe.example.com {
-    reverse_proxy 127.0.0.1:8899
-}
-```
+所有操作也都有对应的命令，适合脚本调用：
 
-**Nginx**：
+| 命令 | 说明 |
+|---|---|
+| `vps-probe install [--port 8899 --user admin --password xxx --reset-day 1]` | 安装或修改面板，没指定的参数沿用原配置 |
+| `vps-probe install --domain probe.example.com` | 安装面板并配置 HTTPS |
+| `vps-probe proxy --domain probe.example.com` | 配置域名和 HTTPS |
+| `vps-probe proxy --lock` / `--remove` | 关闭面板的 HTTP 端口 / 撤销 HTTPS |
+| `vps-probe status` | 查看状态、访问地址和登录信息 |
+| `vps-probe upgrade` | 从 GitHub 升级到最新版本 |
+| `vps-probe uninstall` | 卸载 |
 
-```nginx
-# http { } 中：limit_conn_zone $binary_remote_addr zone=probe_conn:10m;
-server {
-    listen 443 ssl;
-    server_name probe.example.com;
-    ssl_certificate     /etc/ssl/probe.crt;
-    ssl_certificate_key /etc/ssl/probe.key;
-    client_max_body_size 300k;
-    limit_conn probe_conn 20;
-    location / {
-        proxy_pass http://127.0.0.1:8899;
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_read_timeout 60s;
-    }
-}
-```
+首次安装时把 `vps-probe` 换成 `curl -fsSL .../install.sh | bash -s --`，例如 `... | bash -s -- install --domain probe.example.com`。
 
-每台子服务器会占用一条长连接，代理的连接上限需要大于子服务器数量。之后请**从 HTTPS 地址打开面板**再添加服务器，生成的命令会使用 HTTPS 地址。
+安装和升级时会先检查参数和端口，再备份旧的代码和配置；新版本启动失败会自动恢复旧版本，首次安装失败会清理干净。
+
+## 域名和 HTTPS
+
+面板使用 HTTP Basic 认证，子服务器使用 token，在 HTTP 下都是明文传输，公网使用请配置 HTTPS。准备一个解析到本机公网 IP 的域名，并在云厂商安全组放行 80、443 端口，然后在菜单中选择「配置域名和 HTTPS」，或执行 `vps-probe proxy --domain probe.example.com`：
+
+1. 选择反向代理：已装 Nginx 时使用 Nginx + Certbot；否则系统软件源里有 Caddy 时（Ubuntu 23.04+、Debian 12+）安装 Caddy，证书自动申请和续期，没有则安装 Nginx + Certbot。也可以用 `--proxy caddy|nginx` 指定。80 / 443 端口被其他程序占用时会停止
+2. 写入代理配置，放行 ufw / firewalld 防火墙的 80、443 端口，等待证书签发后在本机通过 HTTPS 自检；失败会撤销代理配置（本次才启动的代理服务也会停掉），面板保持原样
+3. 面板记录域名，已连接的子服务器（1.4 及以后版本）收到 HTTPS 地址后自动切换
+4. 配置前在线的子服务器都重新连上并改用 HTTPS 后，面板改为只监听 127.0.0.1，外部只能通过 HTTPS 访问。还有旧版本子服务器时会保留 HTTP 端口，升级它们后执行 `vps-probe proxy --lock`
+
+生成的配置文件是 `/etc/caddy/vps-probe.caddy` 或 `/etc/nginx/conf.d/vps-probe.conf`。使用自己的反向代理时，转发到 `127.0.0.1:8899`，并在 `/etc/vps-probe.env` 中设置 `PROBE_TRUST_PROXY="1"` 和 `PROBE_HOST="127.0.0.1"`。
 
 ## 添加子服务器
 
-在面板中点「添加服务器」，到目标服务器上以 root 执行生成的命令。命令会从面板下载与面板相同的 `probe.py`，校验 SHA-256 后安装为 `vps-probe-agent` 服务。
+在面板中点「添加服务器」，到目标服务器上以 root 执行生成的命令。命令会从面板下载与面板相同版本的源码包，校验 SHA-256 后安装为 `vps-probe-agent` 服务。
 
 面板是 HTTP 时，需要先确认「面板与这台服务器之间是可信网络（内网 / 专线 / VPN）」才会显示命令，命令里带有 `--allow-http`；子服务器在没有这个参数时会拒绝非本机的 HTTP 面板地址。
 
@@ -66,7 +50,7 @@ server {
 
 ## 配置项
 
-面板：`/etc/vps-probe.env`；子服务器：`/etc/vps-probe-agent.env`。修改后执行 `systemctl restart vps-probe`（或 `vps-probe-agent`）。
+面板：`/etc/vps-probe.env`；子服务器：`/etc/vps-probe-agent.env`。一般通过菜单修改；手动修改后执行 `systemctl restart vps-probe`（或 `vps-probe-agent`），升级时会保留。
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
@@ -76,9 +60,10 @@ server {
 | `PROBE_INTERVAL` | `2` | 采样间隔（1–10 秒） |
 | `PROBE_IFACES` | 空 | 只统计这些网卡的流量，逗号分隔，支持通配符，如 `eth0,ens*` |
 | `PROBE_IFACES_EXCLUDE` | 空 | 在默认规则之外再排除的网卡 |
+| `PROBE_DOMAIN` / `PROBE_PROXY` | 空 | HTTPS 域名和反向代理类型，由「配置域名和 HTTPS」写入 |
+| `PROBE_TRUST_PROXY` | 空 | 设为 `1` 时，来自本机的请求按 `X-Forwarded-For` 识别来源 IP |
 | `PROBE_MAX_CONN` | `256` | 同时保持的连接数上限，需大于子服务器数量 |
 | `PROBE_IDLE_TIMEOUT` / `PROBE_REQUEST_TIMEOUT` | `30` / `30` | 空闲连接关闭时间、单个请求的处理时限（秒） |
-| `PROBE_TRUST_PROXY` | 空 | 设为 `1` 时，来自本机的请求按 `X-Forwarded-For` 识别来源 IP |
 | `PROBE_AGENT` / `PROBE_TOKEN` | — | 子服务器：面板地址和 token |
 | `PROBE_ALLOW_HTTP` | 空 | 子服务器：设为 `1` 允许 HTTP 面板地址（仅限可信内网） |
 
@@ -120,12 +105,21 @@ server {
 ## 安全
 
 - 面板没有设置密码时只能查看，不能在网页上管理服务器
-- 内置 HTTP 服务有连接数上限、请求时限、请求体大小限制和认证失败限流；公网长期使用仍建议放在 Caddy / Nginx 之后
+- 内置 HTTP 服务有连接数上限、请求时限、请求体大小限制和认证失败限流；公网使用请配置 HTTPS
 - 页面会显示进程命令行，命令行里的敏感参数会被已登录的用户看到
 
-## 卸载
+## 代码结构
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/zhushili/vps-probe/main/install.sh | bash -s -- uninstall   # 面板和子服务器
-python3 /opt/vps-probe-agent/probe.py uninstall                                                        # 只卸载子服务器
-```
+只依赖 Python 标准库，代码在 `vps_probe/`，直接以 `python3 -m vps_probe` 运行，不需要构建：
+
+| 模块 | 职责 | 模块 | 职责 |
+|---|---|---|---|
+| `config` | 配置常量 | `util` | 日志、可靠的文件读写、定时任务 |
+| `metrics` | 读取 /proc 指标 | `collector` | 本机采集与流量统计 |
+| `store` | 服务器列表与历史数据 | `schema` | 上报数据校验 |
+| `server` | HTTP 服务 | `panel` / `agent` | 面板模式 / 子服务器模式 |
+| `bundle` | 供子服务器下载的源码包 | `service` | systemd 安装、升级、回滚 |
+| `proxy` | HTTPS 反向代理 | `upgrade` | 在线升级 |
+| `menu` | 交互菜单 | `cli` | 命令行入口 |
+
+网页在 `vps_probe/web/`：`index.html`、`style.css`，脚本按功能分为 `core.js`（格式化、请求、轮询）、`chart.js`、`overview.js`、`detail.js`、`dialogs.js`、`main.js`，启动时拼成一个页面。本地调试：`python3 -m vps_probe run --port 8899 --user admin --password dev`。

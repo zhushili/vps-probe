@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>VPS Probe</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%233b82f6'/%3E%3Cpath d='M20 12h-3l-2.5 6-5-12L7 12H4' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<script>try{var t=localStorage.getItem('probe-theme');document.documentElement.dataset.theme=(t==='light'||t==='dark')?t:(matchMedia('(prefers-color-scheme: light)').matches?'light':'dark')}catch(e){document.documentElement.dataset.theme='dark'}</script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div class="brand">
+    <a class="icon-btn back" id="backBtn" href="#/" title="返回服务器列表" aria-label="返回服务器列表" hidden><svg class="i" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></a>
+    <div class="logo" id="logo"><svg class="i" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+    <div class="brand-text">
+      <h1 class="host" id="title">VPS Probe</h1>
+      <div class="sub" id="subtitle">正在连接…</div>
+    </div>
+  </div>
+  <div class="actions">
+    <span class="pill" id="status"><span class="dot"></span><span id="statusText">连接中</span></span>
+    <span class="pill hide-sm" id="uptimePill" hidden><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span id="uptime">—</span></span>
+    <button class="btn primary" id="addBtn" type="button" data-act="add" hidden><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span class="t">添加服务器</span></button>
+    <button class="icon-btn" id="setBtn" type="button" data-act="settings" title="服务器设置" aria-label="服务器设置" hidden><svg class="i" viewBox="0 0 24 24"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/></svg></button>
+    <button class="icon-btn" id="themeBtn" type="button" title="切换深色 / 浅色主题" aria-label="切换主题"></button>
+  </div>
+</header>
+
+<main id="vOverview" hidden>
+  <div class="banner warn" id="ovBanner" hidden></div>
+  <section class="sumbar">
+    <article class="card stat"><span class="ico" style="--c:#6366f1"><svg class="i" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="8" rx="2"/><rect x="2" y="13" width="20" height="8" rx="2"/><path d="M6 7h.01M6 17h.01"/></svg></span><div><small>在线服务器</small><b id="sOnline">—</b></div></article>
+    <article class="card stat"><span class="ico" style="--c:#10b981"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg></span><div><small>实时下行 · 合计</small><b id="sRx">—</b></div></article>
+    <article class="card stat"><span class="ico" style="--c:#3b82f6"><svg class="i" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></span><div><small>实时上行 · 合计</small><b id="sTx">—</b></div></article>
+    <article class="card stat"><span class="ico" style="--c:#f59e0b"><svg class="i" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg></span><div><small>本周期流量 · 合计</small><b id="sTraffic">—</b></div></article>
+  </section>
+  <div class="section-head"><h2>服务器</h2><span class="muted" id="ovHint"></span></div>
+  <section class="nodes" id="nodeGrid"></section>
+</main>
+
+<main id="vDetail" class="loading" hidden>
+  <div class="banner" id="offBanner" hidden></div>
+  <section class="card waitcard" id="waitCard" hidden>
+    <span class="ico" style="--c:#f59e0b"><svg class="i" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></span>
+    <h3>等待接入</h3>
+    <p class="muted">这台服务器还没有上报过数据。在它上面以 root 身份执行下面的命令，几秒后就会自动显示监控数据。</p>
+    <div class="waitcmd" id="waitCmd"></div>
+  </section>
+
+  <div id="detailBody">
+  <section class="kpis">
+    <article class="card kpi">
+      <div class="kpi-head">
+        <span class="kpi-title"><span class="ico" style="--c:#3b82f6"><svg class="i" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6" rx="1"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></svg></span>CPU</span>
+        <span class="badge" id="cpuCores">—</span>
+      </div>
+      <div class="kpi-body">
+        <div class="ring" id="ringCpu"></div>
+        <dl class="kv">
+          <div><dt>负载</dt><dd id="cpuLoad">—</dd></div>
+          <div><dt>用户 / 系统</dt><dd id="cpuUS">—</dd></div>
+          <div><dt>等待 / 窃取</dt><dd id="cpuWS">—</dd></div>
+        </dl>
+      </div>
+    </article>
+    <article class="card kpi">
+      <div class="kpi-head">
+        <span class="kpi-title"><span class="ico" style="--c:#8b5cf6"><svg class="i" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10v4M10 10v4M14 10v4M18 10v4"/></svg></span>内存</span>
+        <span class="badge" id="memTotal">—</span>
+      </div>
+      <div class="kpi-body">
+        <div class="ring" id="ringMem"></div>
+        <dl class="kv">
+          <div><dt>已用</dt><dd id="memUsed">—</dd></div>
+          <div><dt>缓存</dt><dd id="memCache">—</dd></div>
+          <div><dt>Swap</dt><dd id="memSwap">—</dd></div>
+        </dl>
+      </div>
+    </article>
+    <article class="card kpi">
+      <div class="kpi-head">
+        <span class="kpi-title"><span class="ico" style="--c:#14b8a6"><svg class="i" viewBox="0 0 24 24"><path d="M22 12H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><path d="M6 16h.01M10 16h.01"/></svg></span>磁盘</span>
+        <span class="badge" id="diskBadge">—</span>
+      </div>
+      <div class="kpi-body">
+        <div class="ring" id="ringDisk"></div>
+        <dl class="kv">
+          <div><dt>已用</dt><dd id="diskUsed">—</dd></div>
+          <div><dt>可用</dt><dd id="diskFree">—</dd></div>
+          <div><dt>读 / 写</dt><dd id="diskIO">—</dd></div>
+        </dl>
+      </div>
+    </article>
+    <article class="card kpi">
+      <div class="kpi-head">
+        <span class="kpi-title"><span class="ico" style="--c:#10b981"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></span>网络</span>
+        <span class="badge" id="netBadge">—</span>
+      </div>
+      <div class="kpi-body">
+        <div class="netbig">
+          <div class="rate"><span class="arr" style="--c:#10b981"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12l7 7 7-7"/></svg></span><div><b id="netRx">—</b><small>下行</small></div></div>
+          <div class="rate"><span class="arr" style="--c:#3b82f6"><svg class="i" viewBox="0 0 24 24"><path d="M12 19V5M5 12l7-7 7 7"/></svg></span><div><b id="netTx">—</b><small>上行</small></div></div>
+        </div>
+        <dl class="kv">
+          <div><dt>本周期 ↓</dt><dd id="netCRx">—</dd></div>
+          <div><dt>本周期 ↑</dt><dd id="netCTx">—</dd></div>
+          <div><dt>TCP 连接</dt><dd id="netConn">—</dd></div>
+        </dl>
+      </div>
+    </article>
+  </section>
+
+  <div class="section-head">
+    <h2>性能趋势</h2>
+    <div class="seg" id="rangeSeg"><button type="button" class="on" data-range="live">实时 · 10 分钟</button><button type="button" data-range="day">24 小时</button></div>
+  </div>
+  <section class="charts">
+    <article class="card"><div class="chart-head"><h3>CPU 使用率</h3><div class="legend" id="lgCpu"></div></div><div class="chart" id="chCpu"></div></article>
+    <article class="card"><div class="chart-head"><h3>内存</h3><div class="legend" id="lgMem"></div></div><div class="chart" id="chMem"></div></article>
+    <article class="card"><div class="chart-head"><h3>网络流量</h3><div class="legend" id="lgNet"></div></div><div class="chart" id="chNet"></div></article>
+    <article class="card"><div class="chart-head"><h3>磁盘 IO</h3><div class="legend" id="lgIo"></div></div><div class="chart" id="chIo"></div></article>
+  </section>
+
+  <div class="section-head"><h2>详细信息</h2></div>
+  <section class="grid3">
+    <article class="card">
+      <div class="card-head"><h3>系统信息</h3></div>
+      <dl class="info" id="sysinfo"></dl>
+    </article>
+    <article class="card">
+      <div class="card-head"><h3>网络</h3><span class="right muted" id="cycleSince"></span></div>
+      <div class="tiles">
+        <div class="tile"><div class="l"><i class="sw" style="background:#10b981"></i>本周期下行</div><div class="v" id="tRx">—</div></div>
+        <div class="tile"><div class="l"><i class="sw" style="background:#3b82f6"></i>本周期上行</div><div class="v" id="tTx">—</div></div>
+        <div class="tile"><div class="l">本周期合计</div><div class="v" id="tSum">—</div></div>
+      </div>
+      <div class="sublabel">连接</div>
+      <div class="chips">
+        <span class="chip">TCP<b id="cTcp">—</b></span><span class="chip">已建立<b id="cEst">—</b></span><span class="chip">TIME_WAIT<b id="cTw">—</b></span><span class="chip">UDP<b id="cUdp">—</b></span>
+      </div>
+      <div class="sublabel">网卡</div>
+      <div class="tbl-wrap"><table class="tbl"><thead><tr><th>接口</th><th class="r">下行</th><th class="r">上行</th><th class="r">开机以来 ↓ / ↑</th></tr></thead><tbody id="ifBody"></tbody></table></div>
+      <p class="note" id="netNote"></p>
+    </article>
+    <article class="card">
+      <div class="card-head"><h3>磁盘分区</h3></div>
+      <div id="disks"></div>
+    </article>
+  </section>
+
+  <section class="card procs">
+    <div class="card-head">
+      <h3>进程</h3><span class="muted" id="procSummary"></span>
+      <div class="seg sm right" id="procSeg"><button type="button" class="on" data-sort="cpu">按 CPU</button><button type="button" data-sort="mem">按内存</button></div>
+    </div>
+    <div class="tbl-wrap"><table class="tbl"><thead><tr><th>PID</th><th>进程</th><th class="r">CPU</th><th class="r">内存</th><th class="r hide-sm">线程</th></tr></thead><tbody id="procBody"></tbody></table></div>
+  </section>
+  </div>
+</main>
+
+<footer class="foot"><span id="footL">VPS Probe</span><span id="footR"></span></footer>
+</div>
+
+<dialog id="dlg" aria-labelledby="dlgTitle"></dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
